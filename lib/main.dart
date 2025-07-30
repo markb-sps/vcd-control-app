@@ -37,7 +37,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(seconds: 2), () {
+    Timer(const Duration(seconds: 3), () {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const DeviceListPage()),
       );
@@ -50,8 +50,8 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Center(
         child: Image.asset(
           'assets/images/bee.png',
-          width: 200,
-          height: 200,
+          width: 300,
+          height: 300,
           fit: BoxFit.contain,
         ),
       ),
