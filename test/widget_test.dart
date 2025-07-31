@@ -11,11 +11,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vcd_config/main.dart';
 
 void main() {
-  testWidgets('App loads and shows BLE Devices screen', (WidgetTester tester) async {
+  testWidgets('App loads and shows Hive Sprayers screen', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const MyApp());
 
     // Verify that the devices list page is shown.
-    expect(find.text('BLE Devices'), findsOneWidget);
+    expect(find.text('Hive Sprayers'), findsOneWidget);
   });
 }

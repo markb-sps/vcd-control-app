@@ -18,7 +18,13 @@ class MyApp extends StatelessWidget {
       title: 'Flutter BLE Demo',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.amber,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          centerTitle: true,
+        ),
       ),
       home: const SplashScreen(),
     );
@@ -144,7 +150,8 @@ class _DeviceListPageState extends State<DeviceListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('BLE Devices'),
+        title: const Text('Hive Sprayers'),
+        centerTitle: true,
         actions: [
           IconButton(
             icon: _isScanning
@@ -154,34 +161,61 @@ class _DeviceListPageState extends State<DeviceListPage> {
           ),
         ],
       ),
-      body: _scanResults.isEmpty
-          ? const Center(child: Text('No devices found.'))
-          : ListView.builder(
-        itemCount: _scanResults.length,
-        itemBuilder: (context, index) {
-          final result = _scanResults[index];
-          final device = result.device;
-          final name = result.advertisementData.advName.isNotEmpty
-              ? result.advertisementData.advName
-              : (device.platformName.isNotEmpty
-              ? device.platformName
-              : device.remoteId.str);
-          return ListTile(
-            title: Text(name),
-            subtitle: Text(device.remoteId.str),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => CurrentTimePage(
-                    device: device,
-                    name: name,
-                  ),
-                ),
-              );
-            },
-          );
-        },
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFFDE7), Color(0xFFFFF9C4)],
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: _scanResults.isEmpty
+                  ? const Center(child: Text('No devices found.'))
+                  : ListView.builder(
+                      itemCount: _scanResults.length,
+                      itemBuilder: (context, index) {
+                        final result = _scanResults[index];
+                        final device = result.device;
+                        final name = result.advertisementData.advName.isNotEmpty
+                            ? result.advertisementData.advName
+                            : (device.platformName.isNotEmpty
+                                ? device.platformName
+                                : device.remoteId.str);
+                        return ListTile(
+                          leading: Image.asset(
+                            'assets/images/bee.png',
+                            width: 24,
+                            height: 24,
+                          ),
+                          title: Text(name),
+                          subtitle: Text(device.remoteId.str),
+                          trailing: const Icon(Icons.arrow_forward_ios),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => CurrentTimePage(
+                                  device: device,
+                                  name: name,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'If your device does not appear, power cycle spray equipment and then rescan.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
