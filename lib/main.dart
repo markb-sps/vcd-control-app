@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -18,7 +19,8 @@ class MyApp extends StatelessWidget {
       title: 'Flutter BLE Demo',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.amber,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber.shade700),
+        primaryColor: Colors.amber.shade700,
         scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.black,
@@ -92,8 +94,32 @@ class _DeviceListPageState extends State<DeviceListPage> {
   }
 
   Future<void> _initBle() async {
+    await _ensureLocationService();
     await _requestPermissions();
     await _startScan();
+  }
+
+  Future<void> _ensureLocationService() async {
+    final serviceStatus = await Permission.location.serviceStatus;
+    if (serviceStatus != ServiceStatus.enabled) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Location Disabled'),
+          content: const Text(
+              'Location services must be enabled for Bluetooth scanning.'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await openAppSettings();
+                if (context.mounted) Navigator.of(context).pop();
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _requestPermissions() async {
@@ -167,6 +193,7 @@ class _DeviceListPageState extends State<DeviceListPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [Color(0xFFFFFDE7), Color(0xFFFFF9C4)],
+            transform: GradientRotation(30 * math.pi / 180),
           ),
         ),
         child: Column(
