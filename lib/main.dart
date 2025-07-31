@@ -113,7 +113,13 @@ class _DeviceListPageState extends State<DeviceListPage> {
     _scanSubscription = FlutterBluePlus.onScanResults.listen(
           (results) {
         setState(() {
-          _scanResults = List<ScanResult>.from(results);
+          _scanResults = results
+              .where((r) {
+                final advName = r.advertisementData.advName;
+                final deviceName = r.device.platformName;
+                return advName == 'SPSA-VCD' || deviceName == 'SPSA-VCD';
+              })
+              .toList();
         });
       },
       onError: (error) {
@@ -167,7 +173,7 @@ class _DeviceListPageState extends State<DeviceListPage> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => DeviceDetailPage(
+                  builder: (_) => CurrentTimePage(
                     device: device,
                     name: name,
                   ),
@@ -298,6 +304,140 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               Text(
                 'Battery: ${_batteryValue!.toStringAsFixed(2)} V',
                 style: const TextStyle(fontSize: 32),
+              )
+            else
+              Text(
+                _status,
+                style: const TextStyle(fontSize: 20),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Page that connects to a BLE device and reads the current time from the
+/// Current Time Service.
+class CurrentTimePage extends StatefulWidget {
+  final BluetoothDevice device;
+  final String name;
+
+  const CurrentTimePage({super.key, required this.device, required this.name});
+
+  @override
+  State<CurrentTimePage> createState() => _CurrentTimePageState();
+}
+
+class _CurrentTimePageState extends State<CurrentTimePage> {
+  bool _isConnecting = true;
+  String _status = 'Connecting...';
+  String? _currentTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _connectAndRead();
+  }
+
+  @override
+  void dispose() {
+    widget.device.disconnect();
+    super.dispose();
+  }
+
+  /// Connect to the device, discover services, and read the current time
+  /// characteristic from the Current Time Service.
+  Future<void> _connectAndRead() async {
+    try {
+      await widget.device.connect();
+      setState(() {
+        _status = 'Discovering services...';
+      });
+
+      final services = await widget.device.discoverServices();
+      const String ctsServiceUuid = '1805';
+      const String ctsCharUuid = '2A2B';
+      BluetoothCharacteristic? ctsChar;
+
+      for (final service in services) {
+        if (service.uuid.str.toLowerCase() == ctsServiceUuid.toLowerCase()) {
+          for (final c in service.characteristics) {
+            if (c.uuid.str.toLowerCase() == ctsCharUuid.toLowerCase()) {
+              ctsChar = c;
+              break;
+            }
+          }
+        }
+        if (ctsChar != null) break;
+      }
+
+      if (ctsChar != null) {
+        setState(() {
+          _status = 'Reading current time characteristic...';
+        });
+        final List<int> value = await ctsChar.read();
+        if (value.length >= 7) {
+          final int year = value[0] | (value[1] << 8);
+          final int month = value[2];
+          final int day = value[3];
+          final int hour = value[4];
+          final int minute = value[5];
+          final int second = value[6];
+          final dateTime = DateTime(year, month, day, hour, minute, second);
+          _currentTime = dateTime.toLocal().toString();
+          setState(() {
+            _status = 'Current time received';
+          });
+        } else {
+          setState(() {
+            _status = 'Current time characteristic returned no data';
+          });
+        }
+      } else {
+        setState(() {
+          _status = 'Current Time characteristic not found';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _status = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isConnecting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.name),
+      ),
+      body: Center(
+        child: _isConnecting
+            ? Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_status),
+          ],
+        )
+            : Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'MAC: ${widget.device.remoteId.str}',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            if (_currentTime != null)
+              Text(
+                _currentTime!,
+                style: const TextStyle(fontSize: 20),
               )
             else
               Text(
