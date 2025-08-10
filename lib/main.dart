@@ -471,6 +471,49 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  /// Send a test command to trigger the device's LED.
+  Future<void> _testLed() async {
+    try {
+      const String ledServiceUuid = 'FFB0';
+      const String ledCharUuid = 'FFB1';
+      final services = await widget.device.discoverServices();
+      BluetoothCharacteristic? ledChar;
+
+      for (final service in services) {
+        if (service.uuid.str.toLowerCase() == ledServiceUuid.toLowerCase()) {
+          for (final c in service.characteristics) {
+            if (c.uuid.str.toLowerCase() == ledCharUuid.toLowerCase()) {
+              ledChar = c;
+              break;
+            }
+          }
+        }
+        if (ledChar != null) break;
+      }
+
+      if (ledChar != null) {
+        await ledChar.write([0x01], withoutResponse: false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('LED test command sent')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('LED characteristic not found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -493,6 +536,11 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
             Text(
               'MAC: ${widget.device.remoteId.str}',
               style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _testLed,
+              child: const Text('Test LED'),
             ),
             const SizedBox(height: 16),
             if (_currentTime != null)
