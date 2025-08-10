@@ -471,8 +471,8 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
-  /// Send a test command to trigger the device's LED.
-  Future<void> _testLed() async {
+  /// Write a value to the LED characteristic to turn the LED on or off.
+  Future<void> _setLed(bool on) async {
     try {
       const String ledServiceUuid = 'FFB0';
       const String ledCharUuid = 'FFB1';
@@ -492,10 +492,11 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       }
 
       if (ledChar != null) {
-        await ledChar.write([0x01], withoutResponse: false);
+        await ledChar.write([on ? 0x01 : 0x00], withoutResponse: false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('LED test command sent')),
+            SnackBar(
+                content: Text('LED ${on ? 'on' : 'off'} command sent')),
           );
         }
       } else {
@@ -538,9 +539,19 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _testLed,
-              child: const Text('Test LED'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () => _setLed(true),
+                  child: const Text('LED On'),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  onPressed: () => _setLed(false),
+                  child: const Text('LED Off'),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             if (_currentTime != null)
