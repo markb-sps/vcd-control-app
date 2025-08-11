@@ -515,6 +515,92 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  /// Trigger the pump test characteristic.
+  Future<void> _testPump() async {
+    try {
+      const String serviceUuid = 'FFB0';
+      const String pumpCharUuid = 'FFB2';
+      final services = await widget.device.discoverServices();
+      BluetoothCharacteristic? pumpChar;
+
+      for (final service in services) {
+        if (service.uuid.str.toLowerCase() == serviceUuid.toLowerCase()) {
+          for (final c in service.characteristics) {
+            if (c.uuid.str.toLowerCase() == pumpCharUuid.toLowerCase()) {
+              pumpChar = c;
+              break;
+            }
+          }
+        }
+        if (pumpChar != null) break;
+      }
+
+      if (pumpChar != null) {
+        await pumpChar.write([0x01], withoutResponse: false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Pump test command sent')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Pump characteristic not found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  /// Trigger the heater test characteristic.
+  Future<void> _testHeater() async {
+    try {
+      const String serviceUuid = 'FFB0';
+      const String heaterCharUuid = 'FFB3';
+      final services = await widget.device.discoverServices();
+      BluetoothCharacteristic? heaterChar;
+
+      for (final service in services) {
+        if (service.uuid.str.toLowerCase() == serviceUuid.toLowerCase()) {
+          for (final c in service.characteristics) {
+            if (c.uuid.str.toLowerCase() == heaterCharUuid.toLowerCase()) {
+              heaterChar = c;
+              break;
+            }
+          }
+        }
+        if (heaterChar != null) break;
+      }
+
+      if (heaterChar != null) {
+        await heaterChar.write([0x01], withoutResponse: false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Heater test command sent')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Heater characteristic not found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -539,26 +625,41 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
-                  onPressed: () => _setLed(true),
-                  child: const Text('LED On'),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton(
-                  onPressed: () => _setLed(false),
-                  child: const Text('LED Off'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_currentTime != null)
-              Text(
-                _currentTime!,
-                style: const TextStyle(fontSize: 20),
-              )
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => _setLed(true),
+                    child: const Text('LED On'),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: () => _setLed(false),
+                    child: const Text('LED Off'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    onPressed: _testPump,
+                    child: const Text('Test Pump'),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: _testHeater,
+                    child: const Text('Test Heater'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (_currentTime != null)
+                Text(
+                  _currentTime!,
+                  style: const TextStyle(fontSize: 20),
+                )
             else
               Text(
                 _status,
