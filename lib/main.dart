@@ -518,12 +518,15 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       }
 
       if (scheduleChar != null) {
-        DateTime now = DateTime.now().toUtc();
-        DateTime startUtc = DateTime.utc(now.year, now.month, now.day, start.hour, start.minute);
-        if (startUtc.isBefore(now)) {
-          startUtc = startUtc.add(const Duration(days: 1));
+        // Interpret the picked time in the local time zone then convert to UTC
+        // before sending over BLE so the device receives a UTC epoch value.
+        DateTime nowLocal = DateTime.now();
+        DateTime startLocal = DateTime(
+            nowLocal.year, nowLocal.month, nowLocal.day, start.hour, start.minute);
+        if (startLocal.isBefore(nowLocal)) {
+          startLocal = startLocal.add(const Duration(days: 1));
         }
-        final int startEpoch = startUtc.millisecondsSinceEpoch ~/ 1000;
+        final int startEpoch = startLocal.toUtc().millisecondsSinceEpoch ~/ 1000;
         final int repeatPeriod = repeatSeconds;
         const int repeatCount = 0xFFFFFFFF;
 
