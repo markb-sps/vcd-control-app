@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'spray_schedule_page.dart';
 
 /// Entry point of the application.
 void main() {
@@ -342,6 +343,21 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     }
   }
 
+  Future<void> _openSchedule() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const SpraySchedulePage()),
+    );
+    if (result != null && mounted) {
+      final TimeOfDay start = result['start'] as TimeOfDay;
+      final int repeat = result['repeatMinutes'] as int;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Schedule set for ${start.format(context)} every $repeat min')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -371,6 +387,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                 _status,
                 style: const TextStyle(fontSize: 20),
               ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _openSchedule,
+              child: const Text('Schedule Spray'),
+            ),
           ],
         ),
       ),
@@ -435,6 +456,10 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
       if (ctsChar != null) {
         setState(() {
+          _status = 'Setting current time...';
+        });
+        await _setCurrentUtcTime(ctsChar);
+        setState(() {
           _status = 'Reading current time characteristic...';
         });
         final List<int> value = await ctsChar.read();
@@ -469,6 +494,25 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         _isConnecting = false;
       });
     }
+  }
+
+  /// Write the current UTC time to the Current Time Service characteristic.
+  Future<void> _setCurrentUtcTime(BluetoothCharacteristic ctsChar) async {
+    final now = DateTime.now().toUtc();
+    final int year = now.year;
+    final List<int> data = [
+      year & 0xFF,
+      (year >> 8) & 0xFF,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+      now.second,
+      now.weekday,
+      0x00, // Fractions256
+      0x01, // Adjust Reason: manual time update
+    ];
+    await ctsChar.write(data, withoutResponse: false);
   }
 
   /// Write a value to the LED characteristic to turn the LED on or off.
