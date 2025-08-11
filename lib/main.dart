@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -498,15 +499,15 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   /// Write the spray schedule to the device.
   Future<void> _setSchedule(TimeOfDay start, int repeatMinutes) async {
     try {
-      const String serviceUuid = 'FFB0';
-      const String scheduleCharUuid = 'FFB4';
+      const String serviceUuid = '01001234-5678-1234-1234-5678abcdeff0';
+      const String scheduleCharUuid = '02001234-5678-1234-1234-5678abcdeff1';
       final services = await widget.device.discoverServices();
       BluetoothCharacteristic? scheduleChar;
 
       for (final service in services) {
-        if (service.uuid.str.toLowerCase() == serviceUuid.toLowerCase()) {
+        if (service.uuid.str.toLowerCase() == serviceUuid) {
           for (final c in service.characteristics) {
-            if (c.uuid.str.toLowerCase() == scheduleCharUuid.toLowerCase()) {
+            if (c.uuid.str.toLowerCase() == scheduleCharUuid) {
               scheduleChar = c;
               break;
             }
@@ -516,18 +517,27 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       }
 
       if (scheduleChar != null) {
-        final List<int> data = [
-          start.hour,
-          start.minute,
-          repeatMinutes & 0xFF,
-          (repeatMinutes >> 8) & 0xFF,
-        ];
-        await scheduleChar.write(data, withoutResponse: false);
+        DateTime now = DateTime.now().toUtc();
+        DateTime startUtc = DateTime.utc(now.year, now.month, now.day, start.hour, start.minute);
+        if (startUtc.isBefore(now)) {
+          startUtc = startUtc.add(const Duration(days: 1));
+        }
+        final int startEpoch = startUtc.millisecondsSinceEpoch ~/ 1000;
+        final int repeatPeriod = repeatMinutes * 60;
+        const int repeatCount = 0xFFFFFFFF;
+        const int amountMl = 1;
+
+        final data = ByteData(20);
+        data.setUint64(0, startEpoch, Endian.little);
+        data.setUint32(8, repeatPeriod, Endian.little);
+        data.setUint32(12, repeatCount, Endian.little);
+        data.setUint16(16, amountMl, Endian.little);
+        data.setUint16(18, 0, Endian.little);
+
+        await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Schedule set for ${start.format(context)} every $repeatMinutes min')),
+            SnackBar(content: Text('Schedule set for ${start.format(context)} every $repeatMinutes min')),
           );
         }
       } else {
