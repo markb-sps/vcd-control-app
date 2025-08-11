@@ -249,156 +249,6 @@ class _DeviceListPageState extends State<DeviceListPage> {
   }
 }
 
-/// Page that connects to a BLE device and reads its battery level.
-class DeviceDetailPage extends StatefulWidget {
-  final BluetoothDevice device;
-  final String name;
-
-  const DeviceDetailPage({super.key, required this.device, required this.name});
-
-  @override
-  State<DeviceDetailPage> createState() => _DeviceDetailPageState();
-}
-
-class _DeviceDetailPageState extends State<DeviceDetailPage> {
-  bool _isConnecting = true;
-  double? _batteryValue;
-  String _status = 'Connecting...';
-
-  @override
-  void initState() {
-    super.initState();
-    _connectAndRead();
-  }
-
-  @override
-  void dispose() {
-    widget.device.disconnect();
-    super.dispose();
-  }
-
-  /// Connect to the device, discover services, and read the battery level characteristic.
-  Future<void> _connectAndRead() async {
-    try {
-      await widget.device.connect(); // connect to device:contentReference[oaicite:4]{index=4}.
-      setState(() {
-        _status = 'Discovering services...';
-      });
-
-      final services = await widget.device.discoverServices(); // discover services:contentReference[oaicite:5]{index=5}.
-
-      const String batteryServiceUuid = '180F';
-      const String batteryCharUuid = '2A19';
-      BluetoothCharacteristic? batteryChar;
-
-      for (final service in services) {
-        if (service.uuid.str.toLowerCase() ==
-            batteryServiceUuid.toLowerCase()) {
-          for (final c in service.characteristics) {
-            if (c.uuid.str.toLowerCase() ==
-                batteryCharUuid.toLowerCase()) {
-              batteryChar = c;
-              break;
-            }
-          }
-        }
-        if (batteryChar != null) break;
-      }
-
-      if (batteryChar != null) {
-        setState(() {
-          _status = 'Reading battery characteristic...';
-        });
-        final List<int> value = await batteryChar.read(); // read characteristic:contentReference[oaicite:6]{index=6}.
-        if (value.isNotEmpty) {
-          double voltage;
-          if (value.length >= 2) {
-            final int raw = value[0] | (value[1] << 8);
-            voltage = raw / 1000.0; // two‑byte voltage in mV converted to V.
-          } else {
-            voltage = value[0].toDouble() / 100.0; // heuristic for one‑byte battery level.
-          }
-          _batteryValue = voltage;
-          setState(() {
-            _status = 'Battery value received';
-          });
-        } else {
-          setState(() {
-            _status = 'Battery characteristic returned no data';
-          });
-        }
-      } else {
-        setState(() {
-          _status = 'Battery characteristic not found';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _status = 'Error: $e';
-      });
-    } finally {
-      setState(() {
-        _isConnecting = false;
-      });
-    }
-  }
-
-  Future<void> _openSchedule() async {
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(builder: (_) => const SpraySchedulePage()),
-    );
-    if (result != null && mounted) {
-      final TimeOfDay start = result['start'] as TimeOfDay;
-      final int repeat = result['repeatMinutes'] as int;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'Schedule set for ${start.format(context)} every $repeat min')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.name),
-      ),
-      body: Center(
-        child: _isConnecting
-            ? Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(_status),
-          ],
-        )
-            : Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_batteryValue != null)
-              Text(
-                'Battery: ${_batteryValue!.toStringAsFixed(2)} V',
-                style: const TextStyle(fontSize: 32),
-              )
-            else
-              Text(
-                _status,
-                style: const TextStyle(fontSize: 20),
-              ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _openSchedule,
-              child: const Text('Schedule Spray'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Page that connects to a BLE device and reads the current time from the
 /// Current Time Service.
 class CurrentTimePage extends StatefulWidget {
@@ -645,6 +495,21 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  Future<void> _openSchedule() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const SpraySchedulePage()),
+    );
+    if (result != null && mounted) {
+      final TimeOfDay start = result['start'] as TimeOfDay;
+      final int repeat = result['repeatMinutes'] as int;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Schedule set for ${start.format(context)} every $repeat min')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -708,6 +573,11 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
               Text(
                 _status,
                 style: const TextStyle(fontSize: 20),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _openSchedule,
+                child: const Text('Schedule Spray'),
               ),
           ],
         ),
