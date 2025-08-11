@@ -495,6 +495,57 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  /// Write the spray schedule to the device.
+  Future<void> _setSchedule(TimeOfDay start, int repeatMinutes) async {
+    try {
+      const String serviceUuid = 'FFB0';
+      const String scheduleCharUuid = 'FFB4';
+      final services = await widget.device.discoverServices();
+      BluetoothCharacteristic? scheduleChar;
+
+      for (final service in services) {
+        if (service.uuid.str.toLowerCase() == serviceUuid.toLowerCase()) {
+          for (final c in service.characteristics) {
+            if (c.uuid.str.toLowerCase() == scheduleCharUuid.toLowerCase()) {
+              scheduleChar = c;
+              break;
+            }
+          }
+        }
+        if (scheduleChar != null) break;
+      }
+
+      if (scheduleChar != null) {
+        final List<int> data = [
+          start.hour,
+          start.minute,
+          repeatMinutes & 0xFF,
+          (repeatMinutes >> 8) & 0xFF,
+        ];
+        await scheduleChar.write(data, withoutResponse: false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'Schedule set for ${start.format(context)} every $repeatMinutes min')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Schedule characteristic not found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _openSchedule() async {
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(builder: (_) => const SpraySchedulePage()),
@@ -502,11 +553,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     if (result != null && mounted) {
       final TimeOfDay start = result['start'] as TimeOfDay;
       final int repeat = result['repeatMinutes'] as int;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'Schedule set for ${start.format(context)} every $repeat min')),
-      );
+      await _setSchedule(start, repeat);
     }
   }
 
