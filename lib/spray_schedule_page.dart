@@ -9,7 +9,8 @@ class SpraySchedulePage extends StatefulWidget {
 
 class _SpraySchedulePageState extends State<SpraySchedulePage> {
   TimeOfDay _startTime = TimeOfDay.now();
-  int _repeatMinutes = 60;
+  int _repeatSeconds = 60;
+  int _amountMl = 5;
 
   Future<void> _pickStartTime() async {
     final TimeOfDay? picked = await showTimePicker(
@@ -26,7 +27,8 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
   void _save() {
     Navigator.of(context).pop({
       'start': _startTime,
-      'repeatMinutes': _repeatMinutes,
+      'repeatSeconds': _repeatSeconds,
+      'amountMl': _amountMl,
     });
   }
 
@@ -54,19 +56,49 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
                 const Text('Repeat Every:'),
                 const SizedBox(width: 16),
                 DropdownButton<int>(
-                  value: _repeatMinutes,
+                  value: _repeatSeconds,
                   onChanged: (value) {
                     if (value != null) {
                       setState(() {
-                        _repeatMinutes = value;
+                        _repeatSeconds = value;
                       });
                     }
                   },
                   items: const [
-                    DropdownMenuItem(value: 15, child: Text('15 min')),
-                    DropdownMenuItem(value: 30, child: Text('30 min')),
-                    DropdownMenuItem(value: 60, child: Text('1 hour')),
-                    DropdownMenuItem(value: 120, child: Text('2 hours')),
+                    DropdownMenuItem(value: 30, child: Text('30 sec')),
+                    DropdownMenuItem(value: 60, child: Text('1 min')),
+                    DropdownMenuItem(value: 300, child: Text('5 min')),
+                    DropdownMenuItem(value: 900, child: Text('15 min')),
+                    DropdownMenuItem(value: 1800, child: Text('30 min')),
+                    DropdownMenuItem(value: 3600, child: Text('1 hour')),
+                    DropdownMenuItem(value: 7200, child: Text('2 hours')),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Text('Amount:'),
+                const SizedBox(width: 16),
+                DropdownButton<int>(
+                  value: _amountMl,
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _amountMl = value;
+                      });
+                    }
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 5, child: Text('5 ml')),
+                    DropdownMenuItem(value: 10, child: Text('10 ml')),
+                    DropdownMenuItem(value: 15, child: Text('15 ml')),
+                    DropdownMenuItem(value: 20, child: Text('20 ml')),
+                    DropdownMenuItem(value: 25, child: Text('25 ml')),
+                    DropdownMenuItem(value: 30, child: Text('30 ml')),
+                    DropdownMenuItem(value: 50, child: Text('50 ml')),
+                    DropdownMenuItem(value: 100, child: Text('100 ml')),
                   ],
                 ),
               ],

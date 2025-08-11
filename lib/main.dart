@@ -497,7 +497,8 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   }
 
   /// Write the spray schedule to the device.
-  Future<void> _setSchedule(TimeOfDay start, int repeatMinutes) async {
+  Future<void> _setSchedule(
+      TimeOfDay start, int repeatSeconds, int amountMl, String periodLabel) async {
     try {
       const String serviceUuid = '01001234-5678-1234-1234-5678abcdeff0';
       const String scheduleCharUuid = '02001234-5678-1234-1234-5678abcdeff1';
@@ -523,9 +524,8 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
           startUtc = startUtc.add(const Duration(days: 1));
         }
         final int startEpoch = startUtc.millisecondsSinceEpoch ~/ 1000;
-        final int repeatPeriod = repeatMinutes * 60;
+        final int repeatPeriod = repeatSeconds;
         const int repeatCount = 0xFFFFFFFF;
-        const int amountMl = 1;
 
         final data = ByteData(20);
         data.setUint64(0, startEpoch, Endian.little);
@@ -537,7 +537,9 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Schedule set for ${start.format(context)} every $repeatMinutes min')),
+            SnackBar(
+                content: Text(
+                    'Schedule set for ${start.format(context)} every $periodLabel, $amountMl ml')),
           );
         }
       } else {
@@ -562,8 +564,22 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     );
     if (result != null && mounted) {
       final TimeOfDay start = result['start'] as TimeOfDay;
-      final int repeat = result['repeatMinutes'] as int;
-      await _setSchedule(start, repeat);
+      final int repeat = result['repeatSeconds'] as int;
+      final int amount = result['amountMl'] as int;
+      final String label = _formatPeriod(repeat);
+      await _setSchedule(start, repeat, amount, label);
+    }
+  }
+
+  String _formatPeriod(int seconds) {
+    if (seconds >= 3600) {
+      final hours = seconds ~/ 3600;
+      return hours == 1 ? '1 hour' : '$hours hours';
+    } else if (seconds >= 60) {
+      final minutes = seconds ~/ 60;
+      return minutes == 1 ? '1 min' : '$minutes min';
+    } else {
+      return '$seconds sec';
     }
   }
 
