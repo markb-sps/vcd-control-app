@@ -126,6 +126,7 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
