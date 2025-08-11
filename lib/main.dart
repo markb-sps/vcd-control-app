@@ -321,8 +321,9 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
           final int hour = value[4];
           final int minute = value[5];
           final int second = value[6];
-          final dateTime = DateTime(year, month, day, hour, minute, second);
-          _currentTime = dateTime.toLocal().toString();
+          final dateTime =
+              DateTime.utc(year, month, day, hour, minute, second);
+          _currentTime = dateTime.toUtc().toString();
           setState(() {
             _status = 'Current time received';
           });
@@ -588,74 +589,100 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
   @override
   Widget build(BuildContext context) {
+    final buttonStyle = ElevatedButton.styleFrom(
+      backgroundColor: Colors.amber.shade700,
+      foregroundColor: Colors.black,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.name),
       ),
-      body: Center(
-        child: _isConnecting
-            ? Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(_status),
-          ],
-        )
-            : Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'MAC: ${widget.device.remoteId.str}',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton(
-                    onPressed: () => _setLed(true),
-                    child: const Text('LED On'),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: () => _setLed(false),
-                    child: const Text('LED Off'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton(
-                    onPressed: _testPump,
-                    child: const Text('Test Pump'),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: _testHeater,
-                    child: const Text('Test Heater'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_currentTime != null)
-                Text(
-                  _currentTime!,
-                  style: const TextStyle(fontSize: 20),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFE082), Color(0xFFFFCA28)],
+            transform: GradientRotation(30 * math.pi / 180),
+          ),
+        ),
+        child: Center(
+          child: _isConnecting
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(_status),
+                  ],
                 )
-            else
-              Text(
-                _status,
-                style: const TextStyle(fontSize: 20),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _openSchedule,
-                child: const Text('Schedule Spray'),
-              ),
-          ],
+              : Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: _openSchedule,
+                        style: buttonStyle,
+                        child: const Text('Schedule Spray'),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () => _setLed(true),
+                            style: buttonStyle,
+                            child: const Text('LED On'),
+                          ),
+                          const SizedBox(width: 16),
+                          ElevatedButton(
+                            onPressed: () => _setLed(false),
+                            style: buttonStyle,
+                            child: const Text('LED Off'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(
+                            onPressed: _testPump,
+                            style: buttonStyle,
+                            child: const Text('Test Pump'),
+                          ),
+                          const SizedBox(width: 16),
+                          ElevatedButton(
+                            onPressed: _testHeater,
+                            style: buttonStyle,
+                            child: const Text('Test Heater'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (_currentTime != null)
+                        Text(
+                          'Device Time (UTC): $_currentTime',
+                          style: const TextStyle(fontSize: 20),
+                        )
+                      else
+                        Text(
+                          _status,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      const Spacer(),
+                      Text(
+                        'MAC: ${widget.device.remoteId.str}',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
         ),
       ),
     );
