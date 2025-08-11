@@ -23,7 +23,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber.shade700),
         primaryColor: Colors.amber.shade700,
-        scaffoldBackgroundColor: Colors.white,
+        scaffoldBackgroundColor: const Color(0xFFFFE082),
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
@@ -194,7 +194,7 @@ class _DeviceListPageState extends State<DeviceListPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFFFFDE7), Color(0xFFFFF9C4)],
+            colors: [Color(0xFFFFE082), Color(0xFFFFCA28)],
             transform: GradientRotation(30 * math.pi / 180),
           ),
         ),
@@ -668,11 +668,13 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                         Text(
                           'Device Time (UTC): $_currentTime',
                           style: const TextStyle(fontSize: 20),
+                          textAlign: TextAlign.center,
                         )
                       else
                         Text(
                           _status,
                           style: const TextStyle(fontSize: 20),
+                          textAlign: TextAlign.center,
                         ),
                       const Spacer(),
                       Text(

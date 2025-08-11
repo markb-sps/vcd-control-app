@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 class SpraySchedulePage extends StatefulWidget {
@@ -38,10 +40,19 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
       appBar: AppBar(
         title: const Text('Spray Schedule'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFE082), Color(0xFFFFCA28)],
+            transform: GradientRotation(30 * math.pi / 180),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
             ListTile(
               title: const Text('Start Time'),
               subtitle: Text(_startTime.format(context)),
@@ -106,6 +117,10 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
             const Spacer(),
             ElevatedButton(
               onPressed: _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.shade700,
+                foregroundColor: Colors.black,
+              ),
               child: const Text('Save'),
             ),
           ],
