@@ -4,7 +4,24 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'calibration_form_page.dart';
 import 'spray_schedule_page.dart';
+
+const int kMaxCalibrationEntries = 5;
+
+class CalibrationEntry {
+  final int slot;
+  final int dosageMl;
+  final int sprayTimeUs;
+
+  const CalibrationEntry({
+    required this.slot,
+    required this.dosageMl,
+    required this.sprayTimeUs,
+  });
+
+  int get sprayTimeMs => (sprayTimeUs / 1000).round();
+}
 
 /// Entry point of the application.
 void main() {
@@ -266,6 +283,10 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   bool _isConnecting = true;
   String _status = 'Connecting...';
   String? _currentTime;
+  List<BluetoothService>? _services;
+  List<CalibrationEntry> _calibrations = [];
+  bool _isReadingCalibration = false;
+  String? _calibrationError;
 
   @override
   void initState() {
@@ -288,12 +309,12 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         _status = 'Discovering services...';
       });
 
-      final services = await widget.device.discoverServices();
+      _services = await widget.device.discoverServices();
       const String ctsServiceUuid = '1805';
       const String ctsCharUuid = '2A2B';
       BluetoothCharacteristic? ctsChar;
 
-      for (final service in services) {
+      for (final service in _services!) {
         if (service.uuid.str.toLowerCase() == ctsServiceUuid.toLowerCase()) {
           for (final c in service.characteristics) {
             if (c.uuid.str.toLowerCase() == ctsCharUuid.toLowerCase()) {
@@ -337,6 +358,8 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
           _status = 'Current Time characteristic not found';
         });
       }
+
+      await _readCalibrationData();
     } catch (e) {
       setState(() {
         _status = 'Error: $e';
@@ -367,25 +390,244 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     await ctsChar.write(data, withoutResponse: false);
   }
 
+  Future<List<BluetoothService>> _getServices() async {
+    _services ??= await widget.device.discoverServices();
+    return _services!;
+  }
+
+  Future<BluetoothCharacteristic?> _findCharacteristic(String uuid) async {
+    final services = await _getServices();
+    final target = uuid.toLowerCase();
+    for (final service in services) {
+      for (final c in service.characteristics) {
+        if (c.uuid.str.toLowerCase() == target) {
+          return c;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _readCalibrationData() async {
+    if (mounted) {
+      setState(() {
+        _isReadingCalibration = true;
+        _calibrationError = null;
+      });
+    }
+    try {
+      final calibrationChar = await _findCharacteristic(
+        '03001234-5678-1234-1234-5678abcdeff2',
+      );
+      if (calibrationChar == null) {
+        if (mounted) {
+          setState(() {
+            _calibrations = [];
+            _calibrationError = 'Calibration characteristic not found';
+          });
+        }
+        return;
+      }
+      final data = await calibrationChar.read();
+      final entries = <CalibrationEntry>[];
+      final maxEntries = math.min(
+        kMaxCalibrationEntries,
+        data.length ~/ 8,
+      );
+      for (int slot = 0; slot < maxEntries; slot++) {
+        final offset = slot * 8;
+        final dosage = data[offset] |
+            (data[offset + 1] << 8) |
+            (data[offset + 2] << 16) |
+            (data[offset + 3] << 24);
+        final sprayTimeUs = data[offset + 4] |
+            (data[offset + 5] << 8) |
+            (data[offset + 6] << 16) |
+            (data[offset + 7] << 24);
+        if (dosage <= 0) continue;
+        entries.add(
+          CalibrationEntry(
+            slot: slot,
+            dosageMl: dosage,
+            sprayTimeUs: sprayTimeUs,
+          ),
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _calibrations = entries;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _calibrationError = 'Failed to read calibration: $e';
+          _calibrations = [];
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isReadingCalibration = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _writeCalibrationData(
+      int slot, int dosageMl, int sprayTimeMs) async {
+    if (slot < 0 || slot >= kMaxCalibrationEntries) {
+      throw ArgumentError('Slot $slot is out of range');
+    }
+    final calibrationChar = await _findCharacteristic(
+      '03001234-5678-1234-1234-5678abcdeff2',
+    );
+    if (calibrationChar == null) {
+      throw Exception('Calibration characteristic not found');
+    }
+    final sprayTimeUs = sprayTimeMs * 1000;
+    final normalized = List<CalibrationEntry?>.filled(
+      kMaxCalibrationEntries,
+      null,
+    );
+    for (final entry in _calibrations) {
+      if (entry.slot >= 0 && entry.slot < kMaxCalibrationEntries) {
+        normalized[entry.slot] = entry;
+      }
+    }
+    normalized[slot] = CalibrationEntry(
+      slot: slot,
+      dosageMl: dosageMl,
+      sprayTimeUs: sprayTimeUs,
+    );
+
+    final data = ByteData(kMaxCalibrationEntries * 8);
+    for (int i = 0; i < kMaxCalibrationEntries; i++) {
+      final entry = normalized[i];
+      final offset = i * 8;
+      if (entry != null) {
+        data.setUint32(offset, entry.dosageMl, Endian.little);
+        data.setUint32(offset + 4, entry.sprayTimeUs, Endian.little);
+      } else {
+        data.setUint32(offset, 0, Endian.little);
+        data.setUint32(offset + 4, 0, Endian.little);
+      }
+    }
+
+    await calibrationChar.write(data.buffer.asUint8List(), withoutResponse: false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Calibration stored on device')),
+      );
+    }
+  }
+
+  Future<void> _openCalibrationForm({int? slotIndex}) async {
+    final slotOptions =
+        List<int>.generate(kMaxCalibrationEntries, (index) => index);
+    final initialSlot = slotIndex ?? _firstEmptySlot() ?? 0;
+    final existing = _entryForSlot(initialSlot);
+    final bool? updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CalibrationFormPage(
+          onSubmit: _writeCalibrationData,
+          slotOptions: slotOptions,
+          initialSlot: initialSlot,
+          initialDosageMl: existing?.dosageMl,
+          initialSprayTimeMs: existing?.sprayTimeMs,
+        ),
+      ),
+    );
+    if (updated == true) {
+      await _readCalibrationData();
+    }
+  }
+
+  List<int> _allowedAmountsForSchedule() {
+    final amounts = _calibrations.map((e) => e.dosageMl).toSet().toList()
+      ..sort();
+    return amounts;
+  }
+
+  CalibrationEntry? _entryForSlot(int slot) {
+    for (final entry in _calibrations) {
+      if (entry.slot == slot) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  int? _firstEmptySlot() {
+    final usedSlots = _calibrations.map((e) => e.slot).toSet();
+    for (int i = 0; i < kMaxCalibrationEntries; i++) {
+      if (!usedSlots.contains(i)) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildCalibrationSection() {
+    if (_isReadingCalibration) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_calibrationError != null && _calibrations.isEmpty) {
+      return Text(
+        _calibrationError!,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 16),
+      );
+    }
+    final cards = List<Widget>.generate(kMaxCalibrationEntries, (slot) {
+      final entry = _entryForSlot(slot);
+      final subtitle = entry != null
+          ? 'Dose: ${entry.dosageMl} ml\nSpray Time: ${entry.sprayTimeMs} ms'
+          : 'Empty slot';
+      return Card(
+        color: Colors.white,
+        child: ListTile(
+          title: Text('Slot ${slot + 1}'),
+          subtitle: Text(subtitle),
+          isThreeLine: entry != null,
+          trailing: const Icon(Icons.edit),
+          onTap: () => _openCalibrationForm(slotIndex: slot),
+        ),
+      );
+    });
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Calibration Data',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        ...cards,
+        if (_calibrationError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _calibrationError!,
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        if (_calibrations.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'Tap a slot above to add calibration data for the device.',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// Write a value to the LED characteristic to turn the LED on or off.
   Future<void> _setLed(bool on) async {
     try {
-      const String ledServiceUuid = 'FFB0';
-      const String ledCharUuid = 'FFB1';
-      final services = await widget.device.discoverServices();
-      BluetoothCharacteristic? ledChar;
-
-      for (final service in services) {
-        if (service.uuid.str.toLowerCase() == ledServiceUuid.toLowerCase()) {
-          for (final c in service.characteristics) {
-            if (c.uuid.str.toLowerCase() == ledCharUuid.toLowerCase()) {
-              ledChar = c;
-              break;
-            }
-          }
-        }
-        if (ledChar != null) break;
-      }
+      final ledChar = await _findCharacteristic('ffb1');
 
       if (ledChar != null) {
         await ledChar.write([on ? 0x01 : 0x00], withoutResponse: false);
@@ -414,22 +656,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   /// Trigger the pump test characteristic.
   Future<void> _testPump() async {
     try {
-      const String serviceUuid = 'FFB0';
-      const String pumpCharUuid = 'FFB2';
-      final services = await widget.device.discoverServices();
-      BluetoothCharacteristic? pumpChar;
-
-      for (final service in services) {
-        if (service.uuid.str.toLowerCase() == serviceUuid.toLowerCase()) {
-          for (final c in service.characteristics) {
-            if (c.uuid.str.toLowerCase() == pumpCharUuid.toLowerCase()) {
-              pumpChar = c;
-              break;
-            }
-          }
-        }
-        if (pumpChar != null) break;
-      }
+      final pumpChar = await _findCharacteristic('ffb2');
 
       if (pumpChar != null) {
         await pumpChar.write([0x01], withoutResponse: false);
@@ -457,22 +684,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   /// Trigger the heater test characteristic.
   Future<void> _testHeater() async {
     try {
-      const String serviceUuid = 'FFB0';
-      const String heaterCharUuid = 'FFB3';
-      final services = await widget.device.discoverServices();
-      BluetoothCharacteristic? heaterChar;
-
-      for (final service in services) {
-        if (service.uuid.str.toLowerCase() == serviceUuid.toLowerCase()) {
-          for (final c in service.characteristics) {
-            if (c.uuid.str.toLowerCase() == heaterCharUuid.toLowerCase()) {
-              heaterChar = c;
-              break;
-            }
-          }
-        }
-        if (heaterChar != null) break;
-      }
+      final heaterChar = await _findCharacteristic('ffb3');
 
       if (heaterChar != null) {
         await heaterChar.write([0x01], withoutResponse: false);
@@ -501,22 +713,9 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   Future<void> _setSchedule(
       TimeOfDay start, int repeatSeconds, int amountMl, String periodLabel) async {
     try {
-      const String serviceUuid = '01001234-5678-1234-1234-5678abcdeff0';
-      const String scheduleCharUuid = '02001234-5678-1234-1234-5678abcdeff1';
-      final services = await widget.device.discoverServices();
-      BluetoothCharacteristic? scheduleChar;
-
-      for (final service in services) {
-        if (service.uuid.str.toLowerCase() == serviceUuid) {
-          for (final c in service.characteristics) {
-            if (c.uuid.str.toLowerCase() == scheduleCharUuid) {
-              scheduleChar = c;
-              break;
-            }
-          }
-        }
-        if (scheduleChar != null) break;
-      }
+      final scheduleChar = await _findCharacteristic(
+        '02001234-5678-1234-1234-5678abcdeff1',
+      );
 
       if (scheduleChar != null) {
         // Interpret the picked time in the local time zone then convert to UTC
@@ -563,8 +762,11 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   }
 
   Future<void> _openSchedule() async {
+    final allowedAmounts = _allowedAmountsForSchedule();
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(builder: (_) => const SpraySchedulePage()),
+      MaterialPageRoute(
+        builder: (_) => SpraySchedulePage(allowedAmounts: allowedAmounts),
+      ),
     );
     if (result != null && mounted) {
       final TimeOfDay start = result['start'] as TimeOfDay;
@@ -629,7 +831,23 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                         style: buttonStyle,
                         child: const Text('Schedule Spray'),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _openCalibrationForm,
+                        style: buttonStyle,
+                        child: const Text('Store Calibration'),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: _buildCalibrationSection(),
+                      ),
+                      const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
