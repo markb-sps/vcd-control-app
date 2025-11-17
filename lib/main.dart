@@ -12,15 +12,13 @@ const int kMaxCalibrationEntries = 5;
 class CalibrationEntry {
   final int slot;
   final int dosageMl;
-  final int sprayTimeUs;
+  final int sprayTimeMs;
 
   const CalibrationEntry({
     required this.slot,
     required this.dosageMl,
-    required this.sprayTimeUs,
+    required this.sprayTimeMs,
   });
-
-  int get sprayTimeMs => (sprayTimeUs / 1000).round();
 }
 
 /// Entry point of the application.
@@ -428,30 +426,11 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         }
         return;
       }
-      final data = await calibrationChar.read();
-      final entries = <CalibrationEntry>[];
-      final maxEntries = math.min(
-        kMaxCalibrationEntries,
-        data.length ~/ 8,
-      );
-      for (int slot = 0; slot < maxEntries; slot++) {
-        final offset = slot * 8;
-        final dosage = data[offset] |
-            (data[offset + 1] << 8) |
-            (data[offset + 2] << 16) |
-            (data[offset + 3] << 24);
-        final sprayTimeUs = data[offset + 4] |
-            (data[offset + 5] << 8) |
-            (data[offset + 6] << 16) |
-            (data[offset + 7] << 24);
-        if (dosage <= 0) continue;
-        entries.add(
-          CalibrationEntry(
-            slot: slot,
-            dosageMl: dosage,
-            sprayTimeUs: sprayTimeUs,
-          ),
-        );
+      final raw = await calibrationChar.read();
+      final bytes = Uint8List.fromList(raw);
+      List<CalibrationEntry> entries = _parseSlotAwareCalibration(bytes);
+      if (entries.isEmpty) {
+        entries = _parseLegacyCalibration(bytes);
       }
       if (mounted) {
         setState(() {
@@ -474,6 +453,60 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  List<CalibrationEntry> _parseSlotAwareCalibration(Uint8List data) {
+    if (data.isEmpty) {
+      return const <CalibrationEntry>[];
+    }
+    final byteData = ByteData.sublistView(data);
+    final maxEntries = math.min(kMaxCalibrationEntries, data.length ~/ 8);
+    final Map<int, CalibrationEntry> entriesBySlot = {};
+    for (int i = 0; i < maxEntries; i++) {
+      final offset = i * 8;
+      final slot = byteData.getUint8(offset);
+      if (slot >= kMaxCalibrationEntries) {
+        continue;
+      }
+      final dosage = byteData.getUint16(offset + 2, Endian.little);
+      final sprayTimeMs = byteData.getUint32(offset + 4, Endian.little);
+      if (dosage <= 0 || sprayTimeMs <= 0) {
+        continue;
+      }
+      entriesBySlot[slot] = CalibrationEntry(
+        slot: slot,
+        dosageMl: dosage,
+        sprayTimeMs: sprayTimeMs,
+      );
+    }
+    final entries = entriesBySlot.values.toList()
+      ..sort((a, b) => a.slot.compareTo(b.slot));
+    return entries;
+  }
+
+  List<CalibrationEntry> _parseLegacyCalibration(Uint8List data) {
+    if (data.isEmpty) {
+      return const <CalibrationEntry>[];
+    }
+    final byteData = ByteData.sublistView(data);
+    final maxEntries = math.min(kMaxCalibrationEntries, data.length ~/ 8);
+    final entries = <CalibrationEntry>[];
+    for (int slot = 0; slot < maxEntries; slot++) {
+      final offset = slot * 8;
+      final dosage = byteData.getUint32(offset, Endian.little);
+      final sprayTimeUs = byteData.getUint32(offset + 4, Endian.little);
+      if (dosage <= 0 || sprayTimeUs <= 0) {
+        continue;
+      }
+      entries.add(
+        CalibrationEntry(
+          slot: slot,
+          dosageMl: dosage,
+          sprayTimeMs: (sprayTimeUs / 1000).round(),
+        ),
+      );
+    }
+    return entries;
+  }
+
   Future<void> _writeCalibrationData(
       int slot, int dosageMl, int sprayTimeMs) async {
     if (slot < 0 || slot >= kMaxCalibrationEntries) {
@@ -485,7 +518,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     if (calibrationChar == null) {
       throw Exception('Calibration characteristic not found');
     }
-    final sprayTimeUs = sprayTimeMs * 1000;
     final normalized = List<CalibrationEntry?>.filled(
       kMaxCalibrationEntries,
       null,
@@ -498,20 +530,24 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     normalized[slot] = CalibrationEntry(
       slot: slot,
       dosageMl: dosageMl,
-      sprayTimeUs: sprayTimeUs,
+      sprayTimeMs: sprayTimeMs,
     );
 
-    final data = ByteData(kMaxCalibrationEntries * 8);
-    for (int i = 0; i < kMaxCalibrationEntries; i++) {
-      final entry = normalized[i];
+    final entriesToSend = normalized
+        .whereType<CalibrationEntry>()
+        .toList()
+      ..sort((a, b) => a.slot.compareTo(b.slot));
+    if (entriesToSend.isEmpty) {
+      throw StateError('No calibration entries to write');
+    }
+    final data = ByteData(entriesToSend.length * 8);
+    for (int i = 0; i < entriesToSend.length; i++) {
+      final entry = entriesToSend[i];
       final offset = i * 8;
-      if (entry != null) {
-        data.setUint32(offset, entry.dosageMl, Endian.little);
-        data.setUint32(offset + 4, entry.sprayTimeUs, Endian.little);
-      } else {
-        data.setUint32(offset, 0, Endian.little);
-        data.setUint32(offset + 4, 0, Endian.little);
-      }
+      data.setUint8(offset, entry.slot);
+      data.setUint8(offset + 1, 0); // reserved
+      data.setUint16(offset + 2, entry.dosageMl, Endian.little);
+      data.setUint32(offset + 4, entry.sprayTimeMs, Endian.little);
     }
 
     await calibrationChar.write(data.buffer.asUint8List(), withoutResponse: false);
