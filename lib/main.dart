@@ -797,15 +797,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         DateTime nowUtc = DateTime.now().toUtc();
         DateTime startUtc = DateTime.utc(
             nowUtc.year, nowUtc.month, nowUtc.day, start.hour, start.minute);
-        final DateTime originalStartUtc = startUtc;
-
-        if (startUtc.isBefore(nowUtc)) {
-          startUtc = startUtc.add(const Duration(days: 1));
-          debugPrint(
-            'Scheduling next day because selected start ${originalStartUtc.toIso8601String()} was in the past with repeat ${repeatSeconds}s',
-          );
-        }
-
         final DateTime minScheduleTime =
             DateTime.now().toUtc().add(const Duration(seconds: 5));
         if (startUtc.isBefore(minScheduleTime)) {
