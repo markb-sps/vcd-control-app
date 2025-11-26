@@ -922,12 +922,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                         child: const Text('Schedule Spray'),
                       ),
                       const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: _openCalibrationForm,
-                        style: buttonStyle,
-                        child: const Text('Store Calibration'),
-                      ),
-                      const SizedBox(height: 12),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
