@@ -799,6 +799,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         DateTime nowLocal = DateTime.now();
         DateTime startLocal = DateTime(
             nowLocal.year, nowLocal.month, nowLocal.day, start.hour, start.minute);
+        final DateTime originalStartLocal = startLocal;
 
         final bool repeatIsSubMinute = repeatSeconds < 60;
 
@@ -808,8 +809,14 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
           if (repeatIsSubMinute ||
               (start.hour == nowLocal.hour && start.minute == nowLocal.minute)) {
             startLocal = nowLocal;
+            debugPrint(
+              'Scheduling immediately because selected start ${originalStartLocal.toIso8601String()} was in the past and repeat is ${repeatSeconds}s',
+            );
           } else {
             startLocal = startLocal.add(const Duration(days: 1));
+            debugPrint(
+              'Scheduling next day because selected start ${originalStartLocal.toIso8601String()} was in the past with repeat ${repeatSeconds}s',
+            );
           }
         }
         final int startEpoch = startLocal.toUtc().millisecondsSinceEpoch ~/ 1000;
