@@ -794,32 +794,28 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       );
 
       if (scheduleChar != null) {
-        // Interpret the picked time in the local time zone then convert to UTC
-        // before sending over BLE so the device receives a UTC epoch value.
-        DateTime nowLocal = DateTime.now();
-        DateTime startLocal = DateTime(
-            nowLocal.year, nowLocal.month, nowLocal.day, start.hour, start.minute);
-        final DateTime originalStartLocal = startLocal;
+        DateTime nowUtc = DateTime.now().toUtc();
+        DateTime startUtc = DateTime.utc(
+            nowUtc.year, nowUtc.month, nowUtc.day, start.hour, start.minute);
+        final DateTime originalStartUtc = startUtc;
 
-        final bool repeatIsSubMinute = repeatSeconds < 60;
-
-        // If the selected time is the current minute, schedule immediately instead
-        // of rolling to the next day because the seconds defaulted to zero.
-        if (startLocal.isBefore(nowLocal)) {
-          if (repeatIsSubMinute ||
-              (start.hour == nowLocal.hour && start.minute == nowLocal.minute)) {
-            startLocal = nowLocal;
-            debugPrint(
-              'Scheduling immediately because selected start ${originalStartLocal.toIso8601String()} was in the past and repeat is ${repeatSeconds}s',
-            );
-          } else {
-            startLocal = startLocal.add(const Duration(days: 1));
-            debugPrint(
-              'Scheduling next day because selected start ${originalStartLocal.toIso8601String()} was in the past with repeat ${repeatSeconds}s',
-            );
-          }
+        if (startUtc.isBefore(nowUtc)) {
+          startUtc = startUtc.add(const Duration(days: 1));
+          debugPrint(
+            'Scheduling next day because selected start ${originalStartUtc.toIso8601String()} was in the past with repeat ${repeatSeconds}s',
+          );
         }
-        final int startEpoch = startLocal.toUtc().millisecondsSinceEpoch ~/ 1000;
+
+        final DateTime minScheduleTime =
+            DateTime.now().toUtc().add(const Duration(seconds: 5));
+        if (startUtc.isBefore(minScheduleTime)) {
+          debugPrint(
+            'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
+          );
+          startUtc = minScheduleTime;
+        }
+
+        final int startEpoch = startUtc.millisecondsSinceEpoch ~/ 1000;
         final int repeatPeriod = repeatSeconds;
         const int repeatCount = 0xFFFFFFFF;
 
