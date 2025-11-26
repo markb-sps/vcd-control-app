@@ -800,10 +800,13 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         DateTime startLocal = DateTime(
             nowLocal.year, nowLocal.month, nowLocal.day, start.hour, start.minute);
 
+        final bool repeatIsSubMinute = repeatSeconds < 60;
+
         // If the selected time is the current minute, schedule immediately instead
         // of rolling to the next day because the seconds defaulted to zero.
         if (startLocal.isBefore(nowLocal)) {
-          if (start.hour == nowLocal.hour && start.minute == nowLocal.minute) {
+          if (repeatIsSubMinute ||
+              (start.hour == nowLocal.hour && start.minute == nowLocal.minute)) {
             startLocal = nowLocal;
           } else {
             startLocal = startLocal.add(const Duration(days: 1));
