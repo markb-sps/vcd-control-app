@@ -794,9 +794,12 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       );
 
       if (scheduleChar != null) {
-        DateTime nowUtc = DateTime.now().toUtc();
-        DateTime startUtc = DateTime.utc(
-            nowUtc.year, nowUtc.month, nowUtc.day, start.hour, start.minute);
+        DateTime now = DateTime.now();
+
+        DateTime startLocal = DateTime.utc(
+            now.year, now.month, now.day, start.hour, start.minute);
+        DateTime startUtc = startLocal.toUtc();
+
         final DateTime minScheduleTime =
             DateTime.now().toUtc().add(const Duration(seconds: 5));
         if (startUtc.isBefore(minScheduleTime)) {
