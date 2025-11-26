@@ -333,15 +333,8 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
           _status = 'Reading current time characteristic...';
         });
         final List<int> value = await ctsChar.read();
-        if (value.length >= 7) {
-          final int year = value[0] | (value[1] << 8);
-          final int month = value[2];
-          final int day = value[3];
-          final int hour = value[4];
-          final int minute = value[5];
-          final int second = value[6];
-          final dateTime =
-              DateTime.utc(year, month, day, hour, minute, second);
+        final dateTime = _parseCurrentTime(value);
+        if (dateTime != null) {
           _currentTime = dateTime.toUtc().toString();
           setState(() {
             _status = 'Current time received';
@@ -371,21 +364,68 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
   /// Write the current UTC time to the Current Time Service characteristic.
   Future<void> _setCurrentUtcTime(BluetoothCharacteristic ctsChar) async {
-    final now = DateTime.now().toUtc();
-    final int year = now.year;
-    final List<int> data = [
+    DateTime? confirmed;
+    int attempts = 0;
+    while (confirmed == null && attempts < 3) {
+      attempts++;
+      final targetTime = DateTime.now().toUtc();
+      await ctsChar.write(
+        _buildCurrentTimePayload(targetTime),
+        withoutResponse: false,
+      );
+
+      final readBack = await ctsChar.read();
+      confirmed = _parseCurrentTime(readBack);
+      if (confirmed == null && attempts >= 3) {
+        throw Exception(
+          'Failed to read current time characteristic after setting UTC',
+        );
+      }
+    }
+
+    if (confirmed == null) {
+      return;
+    }
+
+    final skewSeconds =
+        confirmed.difference(DateTime.now().toUtc()).inSeconds.abs();
+    if (skewSeconds > 10) {
+      final correctedTime = DateTime.now().toUtc();
+      await ctsChar.write(
+        _buildCurrentTimePayload(correctedTime),
+        withoutResponse: false,
+      );
+    }
+  }
+
+  List<int> _buildCurrentTimePayload(DateTime time) {
+    final int year = time.year;
+    return [
       year & 0xFF,
       (year >> 8) & 0xFF,
-      now.month,
-      now.day,
-      now.hour,
-      now.minute,
-      now.second,
-      now.weekday,
+      time.month,
+      time.day,
+      time.hour,
+      time.minute,
+      time.second,
+      time.weekday,
       0x00, // Fractions256
       0x01, // Adjust Reason: manual time update
     ];
-    await ctsChar.write(data, withoutResponse: false);
+  }
+
+  DateTime? _parseCurrentTime(List<int> value) {
+    if (value.length < 7) {
+      return null;
+    }
+
+    final int year = value[0] | (value[1] << 8);
+    final int month = value[2];
+    final int day = value[3];
+    final int hour = value[4];
+    final int minute = value[5];
+    final int second = value[6];
+    return DateTime.utc(year, month, day, hour, minute, second);
   }
 
   Future<List<BluetoothService>> _getServices() async {
@@ -759,8 +799,15 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         DateTime nowLocal = DateTime.now();
         DateTime startLocal = DateTime(
             nowLocal.year, nowLocal.month, nowLocal.day, start.hour, start.minute);
+
+        // If the selected time is the current minute, schedule immediately instead
+        // of rolling to the next day because the seconds defaulted to zero.
         if (startLocal.isBefore(nowLocal)) {
-          startLocal = startLocal.add(const Duration(days: 1));
+          if (start.hour == nowLocal.hour && start.minute == nowLocal.minute) {
+            startLocal = nowLocal;
+          } else {
+            startLocal = startLocal.add(const Duration(days: 1));
+          }
         }
         final int startEpoch = startLocal.toUtc().millisecondsSinceEpoch ~/ 1000;
         final int repeatPeriod = repeatSeconds;
