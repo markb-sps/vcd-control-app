@@ -13,6 +13,7 @@ class SpraySchedulePage extends StatefulWidget {
 
 class _SpraySchedulePageState extends State<SpraySchedulePage> {
   late TimeOfDay _startTime;
+  late DateTime _startDate;
   int _repeatSeconds = 60;
   late List<int> _amountOptions;
   int? _amountMl;
@@ -20,10 +21,26 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
   @override
   void initState() {
     super.initState();
-    _startTime = TimeOfDay.now();
+    _startDate = DateTime.now();
+    _startTime = TimeOfDay.fromDateTime(_startDate);
     _amountOptions = widget.allowedAmounts.toSet().toList()..sort();
     if (_amountOptions.isNotEmpty) {
       _amountMl = _amountOptions.first;
+    }
+  }
+
+  Future<void> _pickStartDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+    );
+
+    if (picked != null) {
+      setState(() {
+        _startDate = picked;
+      });
     }
   }
 
@@ -43,8 +60,15 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
     if (_amountMl == null) {
       return;
     }
+    final startDateTime = DateTime(
+      _startDate.year,
+      _startDate.month,
+      _startDate.day,
+      _startTime.hour,
+      _startTime.minute,
+    );
     Navigator.of(context).pop({
-      'start': _startTime,
+      'start': startDateTime,
       'repeatSeconds': _repeatSeconds,
       'amountMl': _amountMl!,
     });
@@ -69,6 +93,17 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+              ListTile(
+                title: const Text('Start Date'),
+                subtitle: Text(
+                  MaterialLocalizations.of(context).formatFullDate(_startDate),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.calendar_today),
+                  onPressed: _pickStartDate,
+                ),
+              ),
+              const SizedBox(height: 8),
               ListTile(
                 title: const Text('Start Time'),
                 subtitle: Text(_startTime.format(context)),

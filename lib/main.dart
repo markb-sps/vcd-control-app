@@ -787,29 +787,33 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
   /// Write the spray schedule to the device.
   Future<void> _setSchedule(
-      TimeOfDay start, int repeatSeconds, int amountMl, String periodLabel) async {
+      DateTime start, int repeatSeconds, int amountMl, String periodLabel) async {
     try {
       final scheduleChar = await _findCharacteristic(
         '02001234-5678-1234-1234-5678abcdeff1',
       );
 
       if (scheduleChar != null) {
-        DateTime now = DateTime.now();
+        final DateTime startUtc = DateTime(
+          start.year,
+          start.month,
+          start.day,
+          start.hour,
+          start.minute,
+        ).toUtc();
 
-        DateTime startLocal = DateTime.utc(
-            now.year, now.month, now.day, start.hour, start.minute);
-        DateTime startUtc = startLocal.toUtc();
+        DateTime adjustedStart = startUtc;
 
         final DateTime minScheduleTime =
             DateTime.now().toUtc().add(const Duration(seconds: 5));
-        if (startUtc.isBefore(minScheduleTime)) {
+        if (adjustedStart.isBefore(minScheduleTime)) {
           debugPrint(
             'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
           );
-          startUtc = minScheduleTime;
+          adjustedStart = minScheduleTime;
         }
 
-        final int startEpoch = startUtc.millisecondsSinceEpoch ~/ 1000;
+        final int startEpoch = adjustedStart.millisecondsSinceEpoch ~/ 1000;
         final int repeatPeriod = repeatSeconds;
         const int repeatCount = 0xFFFFFFFF;
 
@@ -822,10 +826,13 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
         await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
         if (mounted) {
+          final localStart = DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
+          final time = TimeOfDay.fromDateTime(localStart).format(context);
+          final date = MaterialLocalizations.of(context).formatFullDate(localStart);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'Schedule set for ${start.format(context)} every $periodLabel, $amountMl ml')),
+                    'Schedule set for $date at $time every $periodLabel, $amountMl ml')),
           );
         }
       } else {
@@ -852,7 +859,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       ),
     );
     if (result != null && mounted) {
-      final TimeOfDay start = result['start'] as TimeOfDay;
+      final DateTime start = result['start'] as DateTime;
       final int repeat = result['repeatSeconds'] as int;
       final int amount = result['amountMl'] as int;
       final String label = _formatPeriod(repeat);
@@ -913,12 +920,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                         onPressed: _openSchedule,
                         style: buttonStyle,
                         child: const Text('Schedule Spray'),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: _openCalibrationForm,
-                        style: buttonStyle,
-                        child: const Text('Store Calibration'),
                       ),
                       const SizedBox(height: 12),
                       Container(
