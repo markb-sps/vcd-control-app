@@ -97,6 +97,18 @@ class _DeviceListPageState extends State<DeviceListPage> {
   bool _isScanning = false;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
+  String? _batteryVoltageLabel(ScanResult result) {
+    for (final data in result.advertisementData.manufacturerData.values) {
+      if (data.length >= 2) {
+        final lowByte = data[data.length - 1];
+        final highByte = data[data.length - 2];
+        final millivolts = (highByte << 8) | lowByte;
+        return '$millivolts mV';
+      }
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -223,11 +235,17 @@ class _DeviceListPageState extends State<DeviceListPage> {
                       itemBuilder: (context, index) {
                         final result = _scanResults[index];
                         final device = result.device;
+                        final batteryVoltage =
+                            _batteryVoltageLabel(result);
                         final name = result.advertisementData.advName.isNotEmpty
                             ? result.advertisementData.advName
                             : (device.platformName.isNotEmpty
                                 ? device.platformName
                                 : device.remoteId.str);
+                        final macAddress = device.remoteId.str;
+                        final subtitle = batteryVoltage == null
+                            ? macAddress
+                            : '$macAddress $batteryVoltage';
                         return ListTile(
                           leading: Image.asset(
                             'assets/images/bee.png',
@@ -235,7 +253,7 @@ class _DeviceListPageState extends State<DeviceListPage> {
                             height: 24,
                           ),
                           title: Text(name),
-                          subtitle: Text(device.remoteId.str),
+                          subtitle: Text(subtitle),
                           trailing: const Icon(Icons.arrow_forward_ios),
                           onTap: () {
                             Navigator.of(context).push(
