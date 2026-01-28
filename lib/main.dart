@@ -268,6 +268,7 @@ class _DeviceListPageState extends State<DeviceListPage> {
                                 builder: (_) => CurrentTimePage(
                                   device: device,
                                   name: name,
+                                  batteryVoltage: batteryVoltage,
                                 ),
                               ),
                             );
@@ -295,8 +296,14 @@ class _DeviceListPageState extends State<DeviceListPage> {
 class CurrentTimePage extends StatefulWidget {
   final BluetoothDevice device;
   final String name;
+  final String? batteryVoltage;
 
-  const CurrentTimePage({super.key, required this.device, required this.name});
+  const CurrentTimePage({
+    super.key,
+    required this.device,
+    required this.name,
+    this.batteryVoltage,
+  });
 
   @override
   State<CurrentTimePage> createState() => _CurrentTimePageState();
@@ -782,34 +789,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
-  /// Trigger the heater test characteristic.
-  Future<void> _testHeater() async {
-    try {
-      final heaterChar = await _findCharacteristic('ffb3');
-
-      if (heaterChar != null) {
-        await heaterChar.write([0x01], withoutResponse: false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Heater test command sent')),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Heater characteristic not found')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
   /// Write the spray schedule to the device.
   Future<void> _setSchedule(
       DateTime start, int repeatSeconds, int amountMl, String periodLabel) async {
@@ -982,12 +961,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                             style: buttonStyle,
                             child: const Text('Test Pump'),
                           ),
-                          const SizedBox(width: 16),
-                          ElevatedButton(
-                            onPressed: _testHeater,
-                            style: buttonStyle,
-                            child: const Text('Test Heater'),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -1003,6 +976,14 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                           style: const TextStyle(fontSize: 20),
                           textAlign: TextAlign.center,
                         ),
+                      if (widget.batteryVoltage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Battery: ${widget.batteryVoltage}',
+                          style: const TextStyle(fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                       const Spacer(),
                       Text(
                         'MAC: ${widget.device.remoteId.str}',
