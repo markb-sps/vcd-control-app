@@ -243,9 +243,6 @@ class _DeviceListPageState extends State<DeviceListPage> {
                                 ? device.platformName
                                 : device.remoteId.str);
                         final macAddress = device.remoteId.str;
-                        final subtitle = batteryVoltage == null
-                            ? macAddress
-                            : '$macAddress $batteryVoltage';
                         return ListTile(
                           leading: Image.asset(
                             'assets/images/bee.png',
@@ -253,7 +250,17 @@ class _DeviceListPageState extends State<DeviceListPage> {
                             height: 24,
                           ),
                           title: Text(name),
-                          subtitle: Text(subtitle),
+                          subtitle: batteryVoltage == null
+                              ? Text(macAddress)
+                              : Row(
+                                  children: [
+                                    Expanded(child: Text(macAddress)),
+                                    Text(
+                                      batteryVoltage,
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ],
+                                ),
                           trailing: const Icon(Icons.arrow_forward_ios),
                           onTap: () {
                             Navigator.of(context).push(
