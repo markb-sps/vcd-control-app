@@ -103,7 +103,8 @@ class _DeviceListPageState extends State<DeviceListPage> {
         final lowByte = data[data.length - 1];
         final highByte = data[data.length - 2];
         final millivolts = (highByte << 8) | lowByte;
-        return '$millivolts mV';
+        final volts = millivolts / 1000;
+        return 'Batt: ${volts.toStringAsFixed(2)}V';
       }
     }
     return null;
@@ -979,7 +980,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                       if (widget.batteryVoltage != null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          'Battery: ${widget.batteryVoltage}',
+                          widget.batteryVoltage!,
                           style: const TextStyle(fontSize: 16),
                           textAlign: TextAlign.center,
                         ),
