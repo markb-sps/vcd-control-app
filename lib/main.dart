@@ -4,22 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'calibration_entry.dart';
 import 'calibration_form_page.dart';
+import 'calibration_page.dart';
 import 'spray_schedule_page.dart';
 
 const int kMaxCalibrationEntries = 5;
-
-class CalibrationEntry {
-  final int slot;
-  final int dosageMl;
-  final int sprayTimeMs;
-
-  const CalibrationEntry({
-    required this.slot,
-    required this.dosageMl,
-    required this.sprayTimeMs,
-  });
-}
 
 /// Entry point of the application.
 void main() {
@@ -311,6 +301,7 @@ class CurrentTimePage extends StatefulWidget {
 }
 
 class _CurrentTimePageState extends State<CurrentTimePage> {
+  static const int _wakeMagicEpochSeconds = 1;
   bool _isConnecting = true;
   String _status = 'Connecting...';
   String? _currentTime;
@@ -652,6 +643,31 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  Future<void> _openCalibrationPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalibrationPage(
+          initialData: CalibrationPageData(
+            calibrations: _calibrations,
+            error: _calibrationError,
+            isReading: _isReadingCalibration,
+          ),
+          onRefresh: _refreshCalibrationData,
+          onEditSlot: (slot) => _openCalibrationForm(slotIndex: slot),
+        ),
+      ),
+    );
+  }
+
+  Future<CalibrationPageData> _refreshCalibrationData() async {
+    await _readCalibrationData();
+    return CalibrationPageData(
+      calibrations: _calibrations,
+      error: _calibrationError,
+      isReading: _isReadingCalibration,
+    );
+  }
+
   List<int> _allowedAmountsForSchedule() {
     final amounts = _calibrations.map((e) => e.dosageMl).toSet().toList()
       ..sort();
@@ -675,62 +691,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       }
     }
     return null;
-  }
-
-  Widget _buildCalibrationSection() {
-    if (_isReadingCalibration) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_calibrationError != null && _calibrations.isEmpty) {
-      return Text(
-        _calibrationError!,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 16),
-      );
-    }
-    final cards = List<Widget>.generate(kMaxCalibrationEntries, (slot) {
-      final entry = _entryForSlot(slot);
-      final subtitle = entry != null
-          ? 'Dose: ${entry.dosageMl} ml\nSpray Time: ${entry.sprayTimeMs} ms'
-          : 'Empty slot';
-      return Card(
-        color: Colors.white,
-        child: ListTile(
-          title: Text('Slot ${slot + 1}'),
-          subtitle: Text(subtitle),
-          isThreeLine: entry != null,
-          trailing: const Icon(Icons.edit),
-          onTap: () => _openCalibrationForm(slotIndex: slot),
-        ),
-      );
-    });
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Calibration Data',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        ...cards,
-        if (_calibrationError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              _calibrationError!,
-              style: const TextStyle(color: Colors.red),
-            ),
-          ),
-        if (_calibrations.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              'Tap a slot above to add calibration data for the device.',
-              style: TextStyle(fontStyle: FontStyle.italic),
-            ),
-          ),
-      ],
-    );
   }
 
   /// Write a value to the LED characteristic to turn the LED on or off.
@@ -792,35 +752,49 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
   /// Write the spray schedule to the device.
   Future<void> _setSchedule(
-      DateTime start, int repeatSeconds, int amountMl, String periodLabel) async {
+    DateTime start,
+    int repeatSeconds,
+    int repeatCount,
+    int amountMl,
+    String periodLabel,
+  ) async {
     try {
       final scheduleChar = await _findCharacteristic(
         '02001234-5678-1234-1234-5678abcdeff1',
       );
 
       if (scheduleChar != null) {
-        final DateTime startUtc = DateTime(
-          start.year,
-          start.month,
-          start.day,
-          start.hour,
-          start.minute,
-        ).toUtc();
-
-        DateTime adjustedStart = startUtc;
-
-        final DateTime minScheduleTime =
-            DateTime.now().toUtc().add(const Duration(seconds: 5));
-        if (adjustedStart.isBefore(minScheduleTime)) {
-          debugPrint(
-            'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
+        final bool isWakeStart =
+            start.millisecondsSinceEpoch == _wakeMagicEpochSeconds * 1000;
+        DateTime adjustedStart;
+        if (isWakeStart) {
+          adjustedStart = DateTime.fromMillisecondsSinceEpoch(
+            _wakeMagicEpochSeconds * 1000,
+            isUtc: true,
           );
-          adjustedStart = minScheduleTime;
+        } else {
+          final DateTime startUtc = DateTime(
+            start.year,
+            start.month,
+            start.day,
+            start.hour,
+            start.minute,
+          ).toUtc();
+
+          adjustedStart = startUtc;
+
+          final DateTime minScheduleTime =
+              DateTime.now().toUtc().add(const Duration(seconds: 5));
+          if (adjustedStart.isBefore(minScheduleTime)) {
+            debugPrint(
+              'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
+            );
+            adjustedStart = minScheduleTime;
+          }
         }
 
         final int startEpoch = adjustedStart.millisecondsSinceEpoch ~/ 1000;
         final int repeatPeriod = repeatSeconds;
-        const int repeatCount = 0xFFFFFFFF;
 
         final data = ByteData(20);
         data.setUint64(0, startEpoch, Endian.little);
@@ -831,13 +805,20 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
         await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
         if (mounted) {
-          final localStart = DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
-          final time = TimeOfDay.fromDateTime(localStart).format(context);
-          final date = MaterialLocalizations.of(context).formatFullDate(localStart);
+          final String scheduleStartLabel;
+          if (isWakeStart) {
+            scheduleStartLabel = 'Start on Wake';
+          } else {
+            final localStart =
+                DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
+            final time = TimeOfDay.fromDateTime(localStart).format(context);
+            final date = MaterialLocalizations.of(context).formatFullDate(localStart);
+            scheduleStartLabel = '$date at $time';
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'Schedule set for $date at $time every $periodLabel, $amountMl ml')),
+                    'Schedule set for $scheduleStartLabel every $periodLabel, $amountMl ml')),
           );
         }
       } else {
@@ -864,15 +845,51 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       ),
     );
     if (result != null && mounted) {
+      const int repeatCountForever = 0xFFFFFFFF;
       final DateTime start = result['start'] as DateTime;
-      final int repeat = result['repeatSeconds'] as int;
-      final int amount = result['amountMl'] as int;
+      final int repeat = result['initialRepeatSeconds'] as int;
+      final int repeatCount = result['initialRepeatCount'] as int;
+      final int amount = result['initialAmountMl'] as int;
       final String label = _formatPeriod(repeat);
-      await _setSchedule(start, repeat, amount, label);
+      await _setSchedule(start, repeat, repeatCount, amount, label);
+
+      final int secondaryRepeat = result['secondaryRepeatSeconds'] as int;
+      final int secondaryRepeatCount = result['secondaryRepeatCount'] as int;
+      final int secondaryAmount = result['secondaryAmountMl'] as int;
+      if (secondaryRepeat > 0 && secondaryAmount > 0) {
+        if (repeatCount == repeatCountForever) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                    'Secondary spray ignored because the initial repeat count is set to Forever.'),
+              ),
+            );
+          }
+          return;
+        }
+
+        final bool isWakeStart =
+            start.millisecondsSinceEpoch == _wakeMagicEpochSeconds * 1000;
+        final DateTime secondaryStart = isWakeStart
+            ? start
+            : start.add(Duration(seconds: repeat * repeatCount));
+        final String secondaryLabel = _formatPeriod(secondaryRepeat);
+        await _setSchedule(
+          secondaryStart,
+          secondaryRepeat,
+          secondaryRepeatCount,
+          secondaryAmount,
+          secondaryLabel,
+        );
+      }
     }
   }
 
   String _formatPeriod(int seconds) {
+    if (seconds == 0) {
+      return 'never';
+    }
     if (seconds >= 3600) {
       final hours = seconds ~/ 3600;
       return hours == 1 ? '1 hour' : '$hours hours';
@@ -934,7 +951,38 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                           color: Colors.white.withOpacity(0.8),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: _buildCalibrationSection(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Calibration Data',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _calibrations.isEmpty
+                                  ? 'No calibration data yet.'
+                                  : '${_calibrations.length} calibration slots configured.',
+                            ),
+                            if (_calibrationError != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  _calibrationError!,
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _openCalibrationPage,
+                                child: const Text('View Calibration Details'),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Row(
