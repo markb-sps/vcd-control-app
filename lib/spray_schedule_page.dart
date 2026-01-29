@@ -32,6 +32,7 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
 
   static const int _repeatCountForever = 0xFFFFFFFF;
   static const List<int> _repeatCountOptions = [
+    0,
     1,
     2,
     3,

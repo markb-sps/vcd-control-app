@@ -750,22 +750,33 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
-  /// Write the spray schedule to the device.
-  Future<void> _setSchedule(
-    DateTime start,
-    int repeatSeconds,
-    int repeatCount,
-    int amountMl,
-    String periodLabel,
-  ) async {
+  /// Write the spray schedules to the device.
+  Future<void> _setSchedules(List<_ScheduleEntry> schedules) async {
     try {
       final scheduleChar = await _findCharacteristic(
         '02001234-5678-1234-1234-5678abcdeff1',
       );
 
-      if (scheduleChar != null) {
+      if (scheduleChar == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Schedule characteristic not found')),
+          );
+        }
+        return;
+      }
+
+      if (schedules.isEmpty) {
+        return;
+      }
+
+      final data = ByteData(20 * schedules.length);
+      final List<String> summaryParts = [];
+      for (int i = 0; i < schedules.length; i++) {
+        final schedule = schedules[i];
         final bool isWakeStart =
-            start.millisecondsSinceEpoch == _wakeMagicEpochSeconds * 1000;
+            schedule.start.millisecondsSinceEpoch ==
+                _wakeMagicEpochSeconds * 1000;
         DateTime adjustedStart;
         if (isWakeStart) {
           adjustedStart = DateTime.fromMillisecondsSinceEpoch(
@@ -774,11 +785,11 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
           );
         } else {
           final DateTime startUtc = DateTime(
-            start.year,
-            start.month,
-            start.day,
-            start.hour,
-            start.minute,
+            schedule.start.year,
+            schedule.start.month,
+            schedule.start.day,
+            schedule.start.hour,
+            schedule.start.minute,
           ).toUtc();
 
           adjustedStart = startUtc;
@@ -794,39 +805,33 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
         }
 
         final int startEpoch = adjustedStart.millisecondsSinceEpoch ~/ 1000;
-        final int repeatPeriod = repeatSeconds;
+        final int offset = i * 20;
+        data.setUint64(offset, startEpoch, Endian.little);
+        data.setUint32(offset + 8, schedule.repeatSeconds, Endian.little);
+        data.setUint32(offset + 12, schedule.repeatCount, Endian.little);
+        data.setUint16(offset + 16, schedule.amountMl, Endian.little);
+        data.setUint16(offset + 18, 0, Endian.little);
 
-        final data = ByteData(20);
-        data.setUint64(0, startEpoch, Endian.little);
-        data.setUint32(8, repeatPeriod, Endian.little);
-        data.setUint32(12, repeatCount, Endian.little);
-        data.setUint16(16, amountMl, Endian.little);
-        data.setUint16(18, 0, Endian.little);
+        final String scheduleStartLabel;
+        if (isWakeStart) {
+          scheduleStartLabel = 'Start on Wake';
+        } else {
+          final localStart =
+              DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
+          final time = TimeOfDay.fromDateTime(localStart).format(context);
+          final date = MaterialLocalizations.of(context).formatFullDate(localStart);
+          scheduleStartLabel = '$date at $time';
+        }
+        summaryParts.add(
+          '$scheduleStartLabel every ${schedule.periodLabel}, ${schedule.amountMl} ml',
+        );
+      }
 
-        await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
-        if (mounted) {
-          final String scheduleStartLabel;
-          if (isWakeStart) {
-            scheduleStartLabel = 'Start on Wake';
-          } else {
-            final localStart =
-                DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
-            final time = TimeOfDay.fromDateTime(localStart).format(context);
-            final date = MaterialLocalizations.of(context).formatFullDate(localStart);
-            scheduleStartLabel = '$date at $time';
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Schedule set for $scheduleStartLabel every $periodLabel, $amountMl ml')),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Schedule characteristic not found')),
-          );
-        }
+      await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Schedules set: ${summaryParts.join(' | ')}')),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -851,7 +856,15 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       final int repeatCount = result['initialRepeatCount'] as int;
       final int amount = result['initialAmountMl'] as int;
       final String label = _formatPeriod(repeat);
-      await _setSchedule(start, repeat, repeatCount, amount, label);
+      final List<_ScheduleEntry> schedules = [
+        _ScheduleEntry(
+          start: start,
+          repeatSeconds: repeat,
+          repeatCount: repeatCount,
+          amountMl: amount,
+          periodLabel: label,
+        ),
+      ];
 
       final int secondaryRepeat = result['secondaryRepeatSeconds'] as int;
       final int secondaryRepeatCount = result['secondaryRepeatCount'] as int;
@@ -875,14 +888,18 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
             ? start
             : start.add(Duration(seconds: repeat * repeatCount));
         final String secondaryLabel = _formatPeriod(secondaryRepeat);
-        await _setSchedule(
-          secondaryStart,
-          secondaryRepeat,
-          secondaryRepeatCount,
-          secondaryAmount,
-          secondaryLabel,
+        schedules.add(
+          _ScheduleEntry(
+            start: secondaryStart,
+            repeatSeconds: secondaryRepeat,
+            repeatCount: secondaryRepeatCount,
+            amountMl: secondaryAmount,
+            periodLabel: secondaryLabel,
+          ),
         );
       }
+
+      await _setSchedules(schedules);
     }
   }
 
@@ -1046,4 +1063,20 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       ),
     );
   }
+}
+
+class _ScheduleEntry {
+  final DateTime start;
+  final int repeatSeconds;
+  final int repeatCount;
+  final int amountMl;
+  final String periodLabel;
+
+  const _ScheduleEntry({
+    required this.start,
+    required this.repeatSeconds,
+    required this.repeatCount,
+    required this.amountMl,
+    required this.periodLabel,
+  });
 }
