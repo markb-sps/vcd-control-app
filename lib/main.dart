@@ -311,6 +311,7 @@ class CurrentTimePage extends StatefulWidget {
 }
 
 class _CurrentTimePageState extends State<CurrentTimePage> {
+  static const int _wakeMagicEpochSeconds = 1;
   bool _isConnecting = true;
   String _status = 'Connecting...';
   String? _currentTime;
@@ -792,35 +793,49 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
   /// Write the spray schedule to the device.
   Future<void> _setSchedule(
-      DateTime start, int repeatSeconds, int amountMl, String periodLabel) async {
+    DateTime start,
+    int repeatSeconds,
+    int repeatCount,
+    int amountMl,
+    String periodLabel,
+  ) async {
     try {
       final scheduleChar = await _findCharacteristic(
         '02001234-5678-1234-1234-5678abcdeff1',
       );
 
       if (scheduleChar != null) {
-        final DateTime startUtc = DateTime(
-          start.year,
-          start.month,
-          start.day,
-          start.hour,
-          start.minute,
-        ).toUtc();
-
-        DateTime adjustedStart = startUtc;
-
-        final DateTime minScheduleTime =
-            DateTime.now().toUtc().add(const Duration(seconds: 5));
-        if (adjustedStart.isBefore(minScheduleTime)) {
-          debugPrint(
-            'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
+        final bool isWakeStart =
+            start.millisecondsSinceEpoch == _wakeMagicEpochSeconds * 1000;
+        DateTime adjustedStart;
+        if (isWakeStart) {
+          adjustedStart = DateTime.fromMillisecondsSinceEpoch(
+            _wakeMagicEpochSeconds * 1000,
+            isUtc: true,
           );
-          adjustedStart = minScheduleTime;
+        } else {
+          final DateTime startUtc = DateTime(
+            start.year,
+            start.month,
+            start.day,
+            start.hour,
+            start.minute,
+          ).toUtc();
+
+          adjustedStart = startUtc;
+
+          final DateTime minScheduleTime =
+              DateTime.now().toUtc().add(const Duration(seconds: 5));
+          if (adjustedStart.isBefore(minScheduleTime)) {
+            debugPrint(
+              'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
+            );
+            adjustedStart = minScheduleTime;
+          }
         }
 
         final int startEpoch = adjustedStart.millisecondsSinceEpoch ~/ 1000;
         final int repeatPeriod = repeatSeconds;
-        const int repeatCount = 0xFFFFFFFF;
 
         final data = ByteData(20);
         data.setUint64(0, startEpoch, Endian.little);
@@ -831,13 +846,20 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
         await scheduleChar.write(data.buffer.asUint8List(), withoutResponse: false);
         if (mounted) {
-          final localStart = DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
-          final time = TimeOfDay.fromDateTime(localStart).format(context);
-          final date = MaterialLocalizations.of(context).formatFullDate(localStart);
+          final String scheduleStartLabel;
+          if (isWakeStart) {
+            scheduleStartLabel = 'Start on Wake';
+          } else {
+            final localStart =
+                DateTime.fromMillisecondsSinceEpoch(startEpoch * 1000).toLocal();
+            final time = TimeOfDay.fromDateTime(localStart).format(context);
+            final date = MaterialLocalizations.of(context).formatFullDate(localStart);
+            scheduleStartLabel = '$date at $time';
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'Schedule set for $date at $time every $periodLabel, $amountMl ml')),
+                    'Schedule set for $scheduleStartLabel every $periodLabel, $amountMl ml')),
           );
         }
       } else {
@@ -865,14 +887,18 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     );
     if (result != null && mounted) {
       final DateTime start = result['start'] as DateTime;
-      final int repeat = result['repeatSeconds'] as int;
-      final int amount = result['amountMl'] as int;
+      final int repeat = result['initialRepeatSeconds'] as int;
+      final int repeatCount = result['initialRepeatCount'] as int;
+      final int amount = result['initialAmountMl'] as int;
       final String label = _formatPeriod(repeat);
-      await _setSchedule(start, repeat, amount, label);
+      await _setSchedule(start, repeat, repeatCount, amount, label);
     }
   }
 
   String _formatPeriod(int seconds) {
+    if (seconds == 0) {
+      return 'never';
+    }
     if (seconds >= 3600) {
       final hours = seconds ~/ 3600;
       return hours == 1 ? '1 hour' : '$hours hours';
