@@ -31,15 +31,8 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
   int _secondaryAmountMl = 0;
 
   static const int _repeatCountForever = 0xFFFFFFFF;
-  static const List<int> _repeatCountOptions = [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    10,
-    20,
+  static final List<int> _repeatCountOptions = [
+    ...List<int>.generate(21, (index) => index),
     _repeatCountForever,
   ];
 
@@ -96,9 +89,6 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
   }
 
   void _save() {
-    if (_initialAmountMl == 0 || _initialRepeatSeconds == 0) {
-      return;
-    }
     final startDateTime = _startOnWake
         ? _wakeMagicDateTime
         : DateTime(
@@ -391,10 +381,7 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
                 ),
               const Spacer(),
               ElevatedButton(
-                onPressed:
-                    _initialAmountMl == 0 || _initialRepeatSeconds == 0
-                        ? null
-                        : _save,
+                onPressed: _save,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber.shade700,
                   foregroundColor: Colors.black,
