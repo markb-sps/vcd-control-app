@@ -869,7 +869,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
       final int secondaryRepeat = result['secondaryRepeatSeconds'] as int;
       final int secondaryRepeatCount = result['secondaryRepeatCount'] as int;
       final int secondaryAmount = result['secondaryAmountMl'] as int;
-      if (secondaryRepeat > 0 && secondaryAmount > 0) {
+      if (secondaryRepeat > 0) {
         if (repeatCount == repeatCountForever) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
