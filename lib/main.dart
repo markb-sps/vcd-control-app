@@ -794,14 +794,6 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
 
           adjustedStart = startUtc;
 
-          final DateTime minScheduleTime =
-              DateTime.now().toUtc().add(const Duration(seconds: 5));
-          if (adjustedStart.isBefore(minScheduleTime)) {
-            debugPrint(
-              'Adjusting start time from ${startUtc.toIso8601String()} to ensure at least 5 seconds lead time',
-            );
-            adjustedStart = minScheduleTime;
-          }
         }
 
         final int startEpoch = adjustedStart.millisecondsSinceEpoch ~/ 1000;
