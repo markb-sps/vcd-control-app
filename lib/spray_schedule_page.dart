@@ -99,11 +99,14 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
   }
 
   Future<void> _pickStartDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime initialDate = _startDate.isBefore(today) ? today : _startDate;
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _startDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365 * 5)),
     );
 
     if (picked != null) {

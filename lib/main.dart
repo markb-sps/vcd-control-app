@@ -308,6 +308,7 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
   List<BluetoothService>? _services;
   List<CalibrationEntry> _calibrations = [];
   bool _isReadingCalibration = false;
+  bool _isReadingSchedule = false;
   String? _calibrationError;
 
   @override
@@ -834,11 +835,111 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
     }
   }
 
+  List<_ScheduleEntry> _parseSchedules(Uint8List raw) {
+    const int scheduleByteLength = 20;
+    if (raw.length < scheduleByteLength) {
+      return const <_ScheduleEntry>[];
+    }
+    final byteData = ByteData.sublistView(raw);
+    final int scheduleCount = raw.length ~/ scheduleByteLength;
+    final List<_ScheduleEntry> schedules = [];
+    for (int i = 0; i < scheduleCount; i++) {
+      final int offset = i * scheduleByteLength;
+      final int startEpochSeconds = byteData.getUint64(offset, Endian.little);
+      final int repeatSeconds = byteData.getUint32(offset + 8, Endian.little);
+      final int repeatCount = byteData.getUint32(offset + 12, Endian.little);
+      final int amountMl = byteData.getUint16(offset + 16, Endian.little);
+      if (startEpochSeconds == 0 &&
+          repeatSeconds == 0 &&
+          repeatCount == 0 &&
+          amountMl == 0) {
+        continue;
+      }
+
+      final DateTime start = startEpochSeconds == _wakeMagicEpochSeconds
+          ? DateTime.fromMillisecondsSinceEpoch(
+              _wakeMagicEpochSeconds * 1000,
+              isUtc: true,
+            )
+          : DateTime.fromMillisecondsSinceEpoch(
+              startEpochSeconds * 1000,
+              isUtc: true,
+            ).toLocal();
+
+      schedules.add(
+        _ScheduleEntry(
+          start: start,
+          repeatSeconds: repeatSeconds,
+          repeatCount: repeatCount,
+          amountMl: amountMl,
+          periodLabel: _formatPeriod(repeatSeconds),
+        ),
+      );
+    }
+    return schedules;
+  }
+
+  Future<SprayScheduleInitialData?> _readScheduleFromVcd() async {
+    final scheduleChar = await _findCharacteristic(
+      '02001234-5678-1234-1234-5678abcdeff1',
+    );
+    if (scheduleChar == null) {
+      return null;
+    }
+
+    final raw = Uint8List.fromList(await scheduleChar.read());
+    final schedules = _parseSchedules(raw);
+    if (schedules.isEmpty) {
+      return null;
+    }
+
+    const int repeatCountForever = 0xFFFFFFFF;
+    final _ScheduleEntry initial = schedules.first;
+    final _ScheduleEntry? secondary = schedules.length > 1 ? schedules[1] : null;
+    final bool startOnWake =
+        initial.start.millisecondsSinceEpoch == _wakeMagicEpochSeconds * 1000;
+    return SprayScheduleInitialData(
+      start: initial.start,
+      startOnWake: startOnWake,
+      initialRepeatSeconds: initial.repeatSeconds,
+      initialRepeatCount: initial.repeatCount,
+      initialAmountMl: initial.amountMl,
+      secondaryRepeatSeconds: secondary?.repeatSeconds ?? 0,
+      secondaryRepeatCount: secondary?.repeatCount ?? repeatCountForever,
+      secondaryAmountMl: secondary?.amountMl ?? 0,
+    );
+  }
+
   Future<void> _openSchedule() async {
+    if (mounted) {
+      setState(() {
+        _isReadingSchedule = true;
+      });
+    }
+    SprayScheduleInitialData? initialData;
+    try {
+      initialData = await _readScheduleFromVcd();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to read schedule from VCD: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isReadingSchedule = false;
+        });
+      }
+    }
+
     final allowedAmounts = _allowedAmountsForSchedule();
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (_) => SpraySchedulePage(allowedAmounts: allowedAmounts),
+        builder: (_) => SpraySchedulePage(
+          allowedAmounts: allowedAmounts,
+          initialData: initialData,
+        ),
       ),
     );
     if (result != null && mounted) {
@@ -948,9 +1049,20 @@ class _CurrentTimePageState extends State<CurrentTimePage> {
                     children: [
                       const SizedBox(height: 24),
                       ElevatedButton(
-                        onPressed: _openSchedule,
+                        onPressed: _isReadingSchedule ? null : _openSchedule,
                         style: buttonStyle,
-                        child: const Text('Schedule Spray'),
+                        child: _isReadingSchedule
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.black,
+                                  ),
+                                ),
+                              )
+                            : const Text('Schedule Spray'),
                       ),
                       const SizedBox(height: 12),
                       Container(
