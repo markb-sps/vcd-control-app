@@ -7,8 +7,13 @@ import 'package:path_provider/path_provider.dart';
 
 class SpraySchedulePage extends StatefulWidget {
   final List<int> allowedAmounts;
+  final SprayScheduleInitialData? initialData;
 
-  const SpraySchedulePage({super.key, required this.allowedAmounts});
+  const SpraySchedulePage({
+    super.key,
+    required this.allowedAmounts,
+    this.initialData,
+  });
 
   @override
   State<SpraySchedulePage> createState() => _SpraySchedulePageState();
@@ -49,6 +54,7 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
     _PeriodOption(seconds: 3600, label: '1 hour'),
     _PeriodOption(seconds: 7200, label: '2 hours'),
     _PeriodOption(seconds: 21600, label: '6 hours'),
+    _PeriodOption(seconds: 28800, label: '8 hours'),
     _PeriodOption(seconds: 43200, label: '12 hours'),
     _PeriodOption(seconds: 86400, label: '24 hours'),
   ];
@@ -59,9 +65,36 @@ class _SpraySchedulePageState extends State<SpraySchedulePage> {
     super.initState();
     _startDate = DateTime.now();
     _startTime = TimeOfDay.fromDateTime(_startDate);
-    _amountOptions = widget.allowedAmounts.toSet().toList()..sort();
+    final Set<int> amountSet = widget.allowedAmounts.toSet();
+    final SprayScheduleInitialData? initial = widget.initialData;
+    if (initial != null) {
+      if (initial.initialAmountMl > 0) {
+        amountSet.add(initial.initialAmountMl);
+      }
+      if (initial.secondaryAmountMl > 0) {
+        amountSet.add(initial.secondaryAmountMl);
+      }
+    }
+    _amountOptions = amountSet.toList()..sort();
     if (_amountOptions.isNotEmpty) {
       _initialAmountMl = _amountOptions.first;
+    }
+    if (initial != null) {
+      final DateTime localStart = initial.start.toLocal();
+      _startOnWake = initial.startOnWake;
+      _startDate = DateTime(localStart.year, localStart.month, localStart.day);
+      _startTime = TimeOfDay.fromDateTime(localStart);
+      _initialRepeatSeconds =
+          _coerceRepeat(initial.initialRepeatSeconds, _initialRepeatSeconds);
+      _secondaryRepeatSeconds =
+          _coerceRepeat(initial.secondaryRepeatSeconds, _secondaryRepeatSeconds);
+      _initialRepeatCount =
+          _coerceRepeatCount(initial.initialRepeatCount, _initialRepeatCount);
+      _secondaryRepeatCount =
+          _coerceRepeatCount(initial.secondaryRepeatCount, _secondaryRepeatCount);
+      _initialAmountMl = _coerceAmount(initial.initialAmountMl, _initialAmountMl);
+      _secondaryAmountMl =
+          _coerceAmount(initial.secondaryAmountMl, _secondaryAmountMl);
     }
   }
 
@@ -590,4 +623,26 @@ class _PeriodOption {
   final String label;
 
   const _PeriodOption({required this.seconds, required this.label});
+}
+
+class SprayScheduleInitialData {
+  final DateTime start;
+  final bool startOnWake;
+  final int initialRepeatSeconds;
+  final int initialRepeatCount;
+  final int initialAmountMl;
+  final int secondaryRepeatSeconds;
+  final int secondaryRepeatCount;
+  final int secondaryAmountMl;
+
+  const SprayScheduleInitialData({
+    required this.start,
+    required this.startOnWake,
+    required this.initialRepeatSeconds,
+    required this.initialRepeatCount,
+    required this.initialAmountMl,
+    required this.secondaryRepeatSeconds,
+    required this.secondaryRepeatCount,
+    required this.secondaryAmountMl,
+  });
 }
